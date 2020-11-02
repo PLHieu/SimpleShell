@@ -3,63 +3,118 @@
 #include <unistd.h>
 #include <string.h>
 #include <memory.h>
-#include <sys/wait.h>
+#include <fcntl.h>
 
-#define MAX_LENGTH_COMMAND  80
+#include <sys/wait.h>
+#include <sys/types.h>
+#include<sys/stat.h>
+
+
+#define MAX_LENGTH_COMMAND  256
+#define MAX_PIPE_INPUT_SIZE 512
+#define NUM_ARGUMENT        100
+#define ARGUMENT_SIZE       50
 #define MIN(a, b)   (a<b?a:b)
 #define MAX(a, b)   (a>b?a:b)
 static char historyCmd[MAX_LENGTH_COMMAND]={0};
+static int num_backgr_process=0;
 void clearScreen();
 void changeTerminalName(const char*name);
 void newPrompt();
 void getInputString(char* const inputString);//__attribute__((nonnull(1)));
 void insert(char* dst, char*src, int position);
-void childProcess();
+void concatToArgList(char**const argList, const char*const str);
+//return:
+//0: normal command
+//1: Output redirect
+//2: Input redirect
+//3: Command next to command
+int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
 
+//get list of argument/tokens from a single argument string
+void getArgList(char** const argList, const char* const argString);
+int processRedirectInputCmd(char** const cmdtokens, char*filename);
+int processRedirectOutputCmd(char** const cmdtokens, char*filename);
+int** newArgumentList();
+//return NULL
+int** freeArgumentList(char** argList);
 int main()
 {
     //change the name of terminal window to SimpleShell
     changeTerminalName("SimpleShell");
     //clear screen
     clearScreen();
+
+    int is_parentwait=0;
     char *inputString=malloc(MAX_LENGTH_COMMAND);
-    int pf[2];
-    if(pipe(pf)<0){
-        printf("fail to setup pipe!\n");
-        return 0;
-    }
-    char* argst[]={"something", NULL};
-    do{
+    char** arg1List=newArgumentList();
+    char** arg2List=newArgumentList();
+
+    while(1){                                       //do while not input "exit"       
         getInputString(inputString);
-        int tmp=fork();
-        if(tmp==-1){
-            printf("fail to fork\n");
-        }else if(tmp==0){//child
-            int e=execvp("ls", argst);
-            if(e<0){
-                close(pf[1]);//write
-                close(pf[0]);//read
-                free(inputString);
-                return 0;
+        if(strcmp(inputString, "exit")==0){break;}  //if wanna exit then exit
+        
+        int type = splitTokens(inputString, arg1List, arg2List, &is_parentwait);
+
+        int tmp=fork();                             //split into parent and child
+        if (tmp == -1) {
+            perror("fork failed");
+        } else if (tmp == 0) {                      //child
+            free(inputString);
+
+            if(type==0){
+                execvp(arg1List[0], arg1List);
+                return 0;                               //make sure in case exec* error, it still return
             }
+            else if(type==1){
+                processRedirectOutputCmd(arg1List, arg2List[0]);
+                return 0;
+            }else if(type==2){
+                processRedirectInputCmd(arg1List, arg2List[0]);
+                return 0;
+            }else if(type==3){                      //cmd next to cmd
+                int pfsub[2];
+                if(pipe(pfsub) < 0){ perror("setup pipe failed"); return 0; }//return inside child=>end child, don't worry
+
+                int ftsub=fork();                   //child split into this child and grandchild
+                if(ftsub<0){
+                    perror("fork failed");
+                    return 0;
+                }else if(ftsub==0){                 //grandchild
+                    dup2(pfsub[1], STDOUT_FILENO);
+                    execvp(arg1List[0], arg1List);//success or not, end grandchild, back to child
+                    return 0;
+                }else{                              //back to child
+                    wait(ftsub);
+                    read(pfsub[0], inputString, MAX_PIPE_INPUT_SIZE);
+                    concatToArgList(arg2List, inputString);
+                    execvp(arg2List[0], arg2List);
+                    return 0;
+                }
+
+            }
+
+            //make sure the child process is terminate
+            //invoke when execvp failed
+            return 0;   //since all the case is already returned, this line seems unneccessary
         }else//parent
         {
-            wait(NULL);
-            newPrompt();
+            if(is_parentwait){
+                wait(tmp);
+                printf("1");
+                newPrompt();
+            }else{              //if child has end
+                num_backgr_process+=1;
+                printf("[%d] %d\n", num_backgr_process, tmp);
+                printf("2");
+                newPrompt();
+            }
         }
-    }
-    while(strcmp(inputString, "exit")!=0);
+    };
 
-    //char* args[]={"lskdfhiosd", NULL};
-    //execv("/bin/mkdir", args);
-    //char* args2[]={"ls", "/home/hw/Desktop/abc",  NULL};
-    //char* args3[]={"kjghyujkjgiufdytsr", "/home/hw/Desktop/abc/tt", "/home/hw/Desktop", NULL};
-    //execv("/bin/ls -l", args2);
-    //execv("/bin/less", args);
-    //getchar();
-    close(pf[1]);//write
-    close(pf[0]);//read
     free(inputString);
+    arg1List=freeArgumentList(arg1List);
+    arg2List=freeArgumentList(arg2List);
     return 0;
 }
 
@@ -68,14 +123,15 @@ void clearScreen(){
     system("clear");
     newPrompt();
 }
-
 void changeTerminalName(const char* name){
     printf("\033]0;%s\007", name);
 }
-
+//new prompt line
 void newPrompt(){
     printf("ssh>");
 }
+
+//get input string from stdin
 void getInputString(char* const inputString){
 
     do{
@@ -124,6 +180,7 @@ void getInputString(char* const inputString){
     }while(1);
 }
 
+//insert src string to dst string at position
 void insert(char* dst, char*src, int position){
     int lendst=strlen(dst);
     int lensrc=strlen(src);
@@ -138,7 +195,161 @@ void insert(char* dst, char*src, int position){
     memmove(dst+position, src, lenMove);
 }
 
-void childProcess()
-{
+//concat tokens in a string to an argument list
+void concatToArgList(char**const argList, const char*const str){
+    char** addList=newArgumentList();
 
+    getArgList(addList, str);
+    int id=0, in=0;
+    while(argList[id]!=NULL){id+=1;}
+    while(addList[in]!=NULL){
+        if(argList[id]!=NULL){ free(argList[id]); }
+        argList[id++]=addList[in];
+        addList[in++]=NULL;
+    }
+    
+    if(argList[id]!=NULL){ free(argList[id]); }
+    argList[id]=NULL;
+
+    addList = freeArgumentList(addList);
 }
+
+//return:
+//0: normal command
+//1: Output redirect
+//2: Input redirect
+//3: Command next to command
+int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait)
+{
+    int res=0;
+    *is_parentwait = 1;
+    //delete last space in inpStr
+    int idlen=strlen(inpStr)-1;
+    while(idlen>=0 && inpStr[idlen]==' '){ inpStr[idlen--] = 0;}
+
+    //check if the last char is & then is_parentwait=true
+    if (idlen >= 0 && inpStr[idlen] == '&') {
+        *is_parentwait = 0;
+        inpStr[idlen]=0;
+    }
+    
+    //split first command and the rest: (tokens2 in simple case)
+    int i=0;
+    while(i<strlen(inpStr) && !strchr("|<>", inpStr[i])){i+=1;} //look for special position or end
+    if(i<strlen(inpStr)){
+        if (inpStr[i]=='>'){res=1;}         //'>'  
+        else if(inpStr[i]=='<'){res=2;}     //'<'
+        else res=3;                         //'|'
+
+        inpStr[i]=0;
+        getArgList(tokens2, inpStr+i+1);
+    }
+    getArgList(tokens1, inpStr);
+
+    return res;
+}
+
+//get list of argument/tokens from a single argument string
+void getArgList(char** const argList, const char* const argString)
+{
+    char* token=malloc(50);
+    int i=0, ti=0, id=0;
+    while(i<strlen(argString))
+    {
+        token[ti]=argString[i];
+        if(token[ti]==' '){
+            token[ti]=0;//end token
+            if(token[0]!=0){//not null token
+                if(argList[id]==NULL){
+                    argList[id]=malloc(ARGUMENT_SIZE);
+                }
+                memmove(argList[id], token, strlen(token)+1);
+                id++;
+            }
+            
+            ti=-1;//new token
+        }
+        i++;
+        ti++;
+    }
+    token[ti]=0;
+    if(token[0]!=0){//not null token
+        if(argList[id]==NULL){
+            argList[id]=malloc(ARGUMENT_SIZE);
+        }
+        memmove(argList[id], token, strlen(token)+1);
+        id++;
+    }
+    
+    free(argList[id]);
+    argList[id]=NULL;
+    free(token);
+}
+
+//return error (<0) or not (>=0)
+int processRedirectInputCmd(char** const cmdtokens, char*filename){
+    int fd=open(filename, O_RDONLY);
+    if(fd<0){
+        printf("bash: %s: No such file or directory", filename);
+        return -1;
+    }
+    dup2(fd, STDIN_FILENO);
+    close(fd);
+
+    int et=execvp(cmdtokens[0], cmdtokens);
+    return et;
+    
+    /*int ft=fork();
+    if(ft<0){
+        printf("fail to create new process");
+        return -1;
+    }else if (ft==0){//child process
+        int fd=open(filename, O_TRUNC | O_CREAT);
+        if(fd<0){
+            printf("error open %s", filename);
+            return -1;
+        }
+        dup2(fd, STDOUT_FILENO);
+        int et=execvp(cmdtokens[0], cmdtokens);
+        return et;
+    }else{//parent
+        if(is_parentwait){
+            wait(NULL);
+        }
+        //return: continue parent process out there
+    }*/
+    return 0;
+}
+//return error (<0) or not (>=0)
+int processRedirectOutputCmd(char** const cmdtokens, char*filename){
+    int fd=open(filename, O_WRONLY | O_TRUNC | O_CREAT);
+    if(fd<0){
+        printf("bash: %s: No such file or directory", filename);
+        return -1;
+    }
+    dup2(fd, STDOUT_FILENO);
+    close(fd);
+
+    int et=execvp(cmdtokens[0], cmdtokens);
+    return et;
+}
+
+int** newArgumentList()
+{
+    char** newList=malloc(NUM_ARGUMENT*sizeof(char*));
+    for(int i=0; i<NUM_ARGUMENT; i++){
+        newList[i]=malloc(ARGUMENT_SIZE);
+    }
+    return newList;
+}
+int** freeArgumentList(char** argList){
+    for(int i=0; i<NUM_ARGUMENT; i++)
+    {
+        free(argList[i]);
+    }
+    free(argList);
+
+    return NULL;
+}
+
+
