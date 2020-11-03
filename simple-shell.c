@@ -4,10 +4,10 @@
 #include <string.h>
 #include <memory.h>
 #include <fcntl.h>
+
 #include <sys/wait.h>
 #include <sys/types.h>
 #include<sys/stat.h>
-#include <errno.h>
 
 
 #define MAX_LENGTH_COMMAND  256
@@ -36,7 +36,6 @@ void getArgList(char** const argList, const char* const argString);
 int processRedirectInputCmd(char** const cmdtokens, char*filename);
 int processRedirectOutputCmd(char** const cmdtokens, char*filename);
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
-int processCmd(int type, char**argumentscmd1, char**argumentscmd2);
 int** newArgumentList();
 //return NULL
 int** freeArgumentList(char** argList);
@@ -63,29 +62,44 @@ int main()
             perror("fork failed");
         } else if (tmp == 0) {                      //child
             free(inputString);
-            return processCmd(type, arg1List, arg2List);
+
+            if(type==0){
+                execvp(arg1List[0], arg1List);
+                return 0;                               //make sure in case exec* error, it still return
+            }
+            else if(type==1){
+                processRedirectOutputCmd(arg1List, arg2List[0]);
+                return 0;
+            }else if(type==2){
+                processRedirectInputCmd(arg1List, arg2List[0]);
+                return 0;
+            }else if(type==3){                      //cmd next to cmd
+                processCmdNextToCmd(arg1List, arg2List);
+
+            }
+
+            //make sure the child process is terminate
+            //invoke when execvp failed
+            return 0;   //since all the case is already returned, this line seems unneccessary
         }else//parent
         {
             if(is_parentwait){
                 wait(tmp);
+                printf("1");
                 newPrompt();
-            }else{//parent not wait, so create new process to wait for the child done to print out newPrompt()
+            }else{              //if child has end
                 num_backgr_process+=1;
                 printf("[%d] %d\n", num_backgr_process, tmp);
+                printf("2");
 
-                //new process run along with the parent to check if child has end.
-                //if child still run then it don't print out newPrompt();
-                int waitstatus;
-                int c2_pid=fork();
-                if(c2_pid<0){ //fork failed
+                int ftsTmp=fork();
+                if(ftsTmp<0){ newPrompt(); }
+                else if(ftsTmp==0){
+                    while(!kill(tmp, 0)){}
                     newPrompt();
+                    return 0;
                 }
-                else if(c2_pid==0){               //child2              root
-                    //continue to read next input and process           |   |
-                }else{//pid>0, parent process                         |       |
-                    int wret=waitpid(tmp, &waitstatus, 0);         //root     child2
-                    newPrompt();                                  //(unused)  (become new root)
-                }
+                
             }
         }
     };
@@ -320,31 +334,19 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2){
         perror("fork failed");
         return 0;
     }else if(ftsub==0){                 //grandchild
-        dup2(pfsub[1], STDOUT_FILENO);
-        execvp(argumentscmd1[0], argumentscmd1);//success or not, end grandchild, back to child
+        close(pfsub[1]);
+        dup2(pfsub[0], STDIN_FILENO);
+        close(pfsub[0]);
+        execvp(argumentscmd2[0], argumentscmd2);//success or not, end grandchild, back to child
         return 0;
     }else{                              //back to child
+        close(pfsub[0);
+        dup2(pfsub[1], STDOUT_FILENO);
+        close(pfsub[1]);
+        execvp(argumentscmd1[0], argumentscmd1);
         wait(ftsub);
-        char* strTmp=malloc(MAX_PIPE_INPUT_SIZE);
-        read(pfsub[0], strTmp, MAX_PIPE_INPUT_SIZE);
-        concatToArgList(argumentscmd2, strTmp);
-        free(strTmp);
-        execvp(argumentscmd2[0], argumentscmd2);
         return 0;
     }
-}
-int processCmd(int type, char**argumentscmd1, char**argumentscmd2){
-
-    if(type==1){
-        return processRedirectOutputCmd(argumentscmd1, argumentscmd2[0]);
-    }else if(type==2){
-        return processRedirectInputCmd(argumentscmd1, argumentscmd2[0]);
-    }else if(type==3){                      //cmd next to cmd
-        return processCmdNextToCmd(argumentscmd1, argumentscmd2);
-    }else{
-        return execvp(argumentscmd1[0], argumentscmd1);//make sure in case exec* error, it still return
-    }
-
 }
 int** newArgumentList()
 {
