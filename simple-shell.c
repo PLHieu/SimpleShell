@@ -35,6 +35,7 @@ int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
 void getArgList(char** const argList, const char* const argString);
 int processRedirectInputCmd(char** const cmdtokens, char*filename);
 int processRedirectOutputCmd(char** const cmdtokens, char*filename);
+int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
 int** newArgumentList();
 //return NULL
 int** freeArgumentList(char** argList);
@@ -73,24 +74,7 @@ int main()
                 processRedirectInputCmd(arg1List, arg2List[0]);
                 return 0;
             }else if(type==3){                      //cmd next to cmd
-                int pfsub[2];
-                if(pipe(pfsub) < 0){ perror("setup pipe failed"); return 0; }//return inside child=>end child, don't worry
-
-                int ftsub=fork();                   //child split into this child and grandchild
-                if(ftsub<0){
-                    perror("fork failed");
-                    return 0;
-                }else if(ftsub==0){                 //grandchild
-                    dup2(pfsub[1], STDOUT_FILENO);
-                    execvp(arg1List[0], arg1List);//success or not, end grandchild, back to child
-                    return 0;
-                }else{                              //back to child
-                    wait(ftsub);
-                    read(pfsub[0], inputString, MAX_PIPE_INPUT_SIZE);
-                    concatToArgList(arg2List, inputString);
-                    execvp(arg2List[0], arg2List);
-                    return 0;
-                }
+                processCmdNextToCmd(arg1List, arg2List);
 
             }
 
@@ -107,7 +91,15 @@ int main()
                 num_backgr_process+=1;
                 printf("[%d] %d\n", num_backgr_process, tmp);
                 printf("2");
-                newPrompt();
+
+                int ftsTmp=fork();
+                if(ftsTmp<0){ newPrompt(); }
+                else if(ftsTmp==0){
+                    while(!kill(tmp, 0)){}
+                    newPrompt();
+                    return 0;
+                }
+                
             }
         }
     };
@@ -333,7 +325,28 @@ int processRedirectOutputCmd(char** const cmdtokens, char*filename){
     int et=execvp(cmdtokens[0], cmdtokens);
     return et;
 }
+int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2){
+    int pfsub[2];
+    if(pipe(pfsub) < 0){ perror("setup pipe failed"); return 0; }//return inside child=>end child, don't worry
 
+    int ftsub=fork();                   //child split into this child and grandchild
+    if(ftsub<0){
+        perror("fork failed");
+        return 0;
+    }else if(ftsub==0){                 //grandchild
+        dup2(pfsub[1], STDOUT_FILENO);
+        execvp(argumentscmd1[0], argumentscmd1);//success or not, end grandchild, back to child
+        return 0;
+    }else{                              //back to child
+        wait(ftsub);
+        char* strTmp=malloc(MAX_PIPE_INPUT_SIZE);
+        read(pfsub[0], strTmp, MAX_PIPE_INPUT_SIZE);
+        concatToArgList(argumentscmd2, strTmp);
+        free(strTmp);
+        execvp(argumentscmd2[0], argumentscmd2);
+        return 0;
+    }
+}
 int** newArgumentList()
 {
     char** newList=malloc(NUM_ARGUMENT*sizeof(char*));
