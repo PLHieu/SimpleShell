@@ -233,11 +233,12 @@ void getArgList(char** const argList, const char* const argString)
 {
     char* token = (char*)malloc(50);
     int i = 0, ti = 0, id = 0;  
+    bool dacodaunhay = false;
 
     while (i < strlen(argString))
     {
         token[ti] = argString[i];
-        if (token[ti] == ' ' && token[0] != '\"') {
+        if (token[ti] == ' ' && dacodaunhay == false) {
             if (ti == 0 || token[ti - 1] != '\\') { // neu nhu no thuoc dang \[ ] thi khong parse
                 token[ti] = 0;//end token
                 if (token[0] != 0) {//not null token
@@ -248,23 +249,33 @@ void getArgList(char** const argList, const char* const argString)
                     id++;
                 }
 
-                ti = -1;//new token
+                  ti = -1;//new token
+            }
+            else if (token[ti-1] == '\\') {
+                token[ti - 1] = ' ';
+                ti = ti-1;
             }
         }
-        else if (token[ti] == '\"' && token[0] == '\"' && ti > 0) { 
-            
-            // neu token[0] la ", tuc la " luc nay la ket thuc -> parse
-            token[ti+1] = 0;//end token
-            if (token[0] != 0) {//not null token
-                if (argList[id] == NULL) {
-                    argList[id] = (char*)malloc(ARGUMENT_SIZE);
-                }
-                memmove(argList[id], token, strlen(token) + 1);
-                id++;
+        else if (token[ti] == '\"' || token[ti] == '\'') { 
+
+            if (!dacodaunhay) { // neu nhu khong co dau nhay -> tuc la dau " hoac 'dau tien
+                dacodaunhay = true;
+                ti = -1;
             }
+            else { // neu nhu da co dau nhay, tuc day la dau nhay ket thuc
+                // neu token[0] la ", tuc la " luc nay la ket thuc -> parse
+                token[ti] = 0;//end token
+                if (token[0] != 0) {//not null token
+                    if (argList[id] == NULL) {
+                        argList[id] = (char*)malloc(ARGUMENT_SIZE);
+                    }
+                    memmove(argList[id], token, strlen(token) + 1);
+                    id++;
+                }
 
-            ti = -1;//new token
-
+                ti = -1;//new token
+                dacodaunhay = false;
+            }
         }
         i++;
         ti++;
