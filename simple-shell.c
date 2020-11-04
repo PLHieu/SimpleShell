@@ -674,14 +674,15 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2){
         return 0;
     }else if(ftsub==0){                 //grandchild
         dup2(pfsub[1], STDOUT_FILENO);
+        close(pfsub[0]);
+        close(pfsub[1]);
         execvp(argumentscmd1[0], argumentscmd1);//success or not, end grandchild, back to child
         return 0;
     }else{                              //back to child
-        wait(ftsub);
-        char* strTmp=malloc(MAX_PIPE_INPUT_SIZE);
-        read(pfsub[0], strTmp, MAX_PIPE_INPUT_SIZE);
-        concatToArgList(argumentscmd2, strTmp);
-        free(strTmp);
+        waitpid(ftsub, NULL, 0);
+        dup2(pfsub[0], STDIN_FILENO);
+        close(pfsub[0]);
+        close(pfsub[1]);
         execvp(argumentscmd2[0], argumentscmd2);
         return 0;
     }
