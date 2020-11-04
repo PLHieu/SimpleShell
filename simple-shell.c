@@ -294,7 +294,7 @@ int processRedirectInputCmd(char** const cmdtokens, char*filename){
 int processRedirectOutputCmd(char** const cmdtokens, char*filename){
     int fd=open(filename, O_WRONLY | O_TRUNC | O_CREAT);
     if(fd<0){
-        printf("bash: %s: No such file or directory", filename);
+        printf("bash: %s: No such file or directory\n", filename);
         return -1;
     }
     dup2(fd, STDOUT_FILENO);
