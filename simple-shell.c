@@ -231,39 +231,58 @@ int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait)
 //get list of argument/tokens from a single argument string
 void getArgList(char** const argList, const char* const argString)
 {
-    char* token=malloc(50);
-    int i=0, ti=0, id=0;
-    while(i<strlen(argString))
+    char* token = (char*)malloc(50);
+    int i = 0, ti = 0, id = 0;  
+
+    while (i < strlen(argString))
     {
-        token[ti]=argString[i];
-        if(token[ti]==' '){
-            token[ti]=0;//end token
-            if(token[0]!=0){//not null token
-                if(argList[id]==NULL){
-                    argList[id]=malloc(ARGUMENT_SIZE);
+        token[ti] = argString[i];
+        if (token[ti] == ' ' && token[0] != '\"') {
+            if (ti == 0 || token[ti - 1] != '\\') { // neu nhu no thuoc dang \[ ] thi khong parse
+                token[ti] = 0;//end token
+                if (token[0] != 0) {//not null token
+                    if (argList[id] == NULL) {
+                        argList[id] = (char*)malloc(ARGUMENT_SIZE);
+                    }
+                    memmove(argList[id], token, strlen(token) + 1);
+                    id++;
                 }
-                memmove(argList[id], token, strlen(token)+1);
+
+                ti = -1;//new token
+            }
+        }
+        else if (token[ti] == '\"' && token[0] == '\"' && ti > 0) { 
+            
+            // neu token[0] la ", tuc la " luc nay la ket thuc -> parse
+            token[ti+1] = 0;//end token
+            if (token[0] != 0) {//not null token
+                if (argList[id] == NULL) {
+                    argList[id] = (char*)malloc(ARGUMENT_SIZE);
+                }
+                memmove(argList[id], token, strlen(token) + 1);
                 id++;
             }
-            
-            ti=-1;//new token
+
+            ti = -1;//new token
+
         }
         i++;
         ti++;
     }
-    token[ti]=0;
-    if(token[0]!=0){//not null token
-        if(argList[id]==NULL){
-            argList[id]=malloc(ARGUMENT_SIZE);
+    token[ti] = 0;
+    if (token[0] != 0) {//not null token
+        if (argList[id] == NULL) {
+            argList[id] = (char*)malloc(ARGUMENT_SIZE);
         }
-        memmove(argList[id], token, strlen(token)+1);
+        memmove(argList[id], token, strlen(token) + 1);
         id++;
     }
-    
+
     free(argList[id]);
-    argList[id]=NULL;
+    argList[id] = NULL;
     free(token);
 }
+
 
 //return error (<0) or not (>=0)
 int processRedirectInputCmd(char** const cmdtokens, char*filename){
