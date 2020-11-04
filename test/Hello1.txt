@@ -1,0 +1,1 @@
+Grep command là một lệnh đắc lực nhất trong các máy hệ Unix. Nó có khả năng tìm kiếm chính xác thông tin bạn cần trong file text. 

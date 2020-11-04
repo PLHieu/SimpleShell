@@ -1,0 +1,31 @@
+#TEST CASE
+
+## Các câu lệnh bình thường, phổ biến
+ls
+ls -l
+wrongcommand
+pwd
+cd ../
+cd ../../
+cd /home/
+cd --help
+mkdir thu\ muc\ 1 thu\ muc\ 2
+mkdir -v "thu muc      1" 'thu     muc  2'
+rm -r "thu muc  1"
+man pwd
+cat -n file1.txt file2.txt
+
+## Lịch sử và thoát
+exit
+!! !!
+!!
+
+## input va output direction 
+ls -l > out.txt
+man pwd > out.txt
+cat -n file1.txt file2.txt > out.txt
+echo “  Hello World ” > out.txt
+sort < number.txt
+cat number.txt | head -4
+cat number.txt | tail -4
+ls -la | grep .txt
