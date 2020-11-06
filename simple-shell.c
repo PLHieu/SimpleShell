@@ -7,7 +7,7 @@
 #include <sys/wait.h>
 //#include <sys/types.h>
 //#include <sys/stat.h>
-//#include <errno.h>
+#include <errno.h>
 
 #define MAX_LENGTH_COMMAND  256
 #define NUM_ARGUMENT        100
@@ -34,8 +34,8 @@ int processRedirectOutputCmd(char** const cmdtokens, char*filename);
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
 int processCmd(int type, char**argumentscmd1, char**argumentscmd2);
 char** newArgumentList();
-//return NULL
 char** freeArgumentList(char** argList);
+//return NULL
 
 int main()
 {
@@ -50,7 +50,8 @@ int main()
     char** arg2List = newArgumentList();
     int mainpf[2];
     if (pipe(mainpf) < 0) {
-            perror("pipe setup failed"); return 0; 
+            perror("pipe setup failed");
+            return 0; 
         }
     int child_pid;
     while (1)
@@ -73,17 +74,16 @@ int main()
             if (is_parentwait) {
                 waitpid(child_pid, NULL, 0);
                 newPrompt();
-            } else {//parent does not wait, so create new process to wait for the child done to print out newPrompt()
+            } else {
                 num_backgr_process += 1;
-                //new process run along with the parent to check if child has end.
-                //if child still run then it don't print out newPrompt();
+                printf("[%d] %d\n", num_backgr_process, child_pid);
                 int c2_pid = fork();
                 if (c2_pid < 0) { //fork failed
                     newPrompt();
                 }
                 else if (c2_pid == 0) {//continue reading new input, and processing, while parent wait for child_run
                     //run while loop 
-                } else {//pid>0, parent process 
+                } else {//pid > 0, parent process 
                     int wret = waitpid(c2_pid, NULL, 0);//wait for child_run
                     newPrompt();
                     return 0;               //end parent, so the above child_2 will become parent
@@ -303,6 +303,7 @@ int processRedirectInputCmd(char** const cmdtokens, char*filename)
     dup2(fd, STDIN_FILENO);
     close(fd);
     int et = execvp(cmdtokens[0], cmdtokens);
+    perror("exevcp failed");
     return et;
 }
 //return error (<0) or not (>=0)
@@ -318,6 +319,7 @@ int processRedirectOutputCmd(char** const cmdtokens, char*filename)
     close(fd);
 
     int et = execvp(cmdtokens[0], cmdtokens);
+    perror("exevcp failed");
     return et;
 }
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
@@ -339,6 +341,7 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
         close(pfsub[0]);
         close(pfsub[1]);
         execvp(argumentscmd1[0], argumentscmd1);//success or not, end grandchild, back to child
+        perror("exevcp failed");
         return 0;
     } else {                              //back to child
         waitpid(ftsub, NULL, 0);
@@ -346,6 +349,7 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
         close(pfsub[0]);
         close(pfsub[1]);
         execvp(argumentscmd2[0], argumentscmd2);
+        perror("exevcp failed");
         return 0;
     }
 }
@@ -359,6 +363,7 @@ int processCmd(int type, char**argumentscmd1, char**argumentscmd2)
         processCmdNextToCmd(argumentscmd1, argumentscmd2);
     } else {
         execvp(argumentscmd1[0], argumentscmd1);//make sure in case exec* error, it still return 
+        perror("exevcp failed");
     }
 
     return 0;
