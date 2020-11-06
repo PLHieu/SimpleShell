@@ -2,46 +2,98 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-//#include <memory.h>
 #include <fcntl.h>
 #include <sys/wait.h>
-//#include <sys/types.h>
-//#include <sys/stat.h>
+#include <sys/stat.h>
 #include <errno.h>
 
 #define MAX_LENGTH_COMMAND  256
-#define NUM_ARGUMENT        100
-#define ARGUMENT_SIZE       50
+#define MAX_LENGTH_PATH     256
+#define NUM_ARGUMENT        50
+#define ARGUMENT_SIZE       200
 #define MIN(a, b)   (a<b?a:b)
 #define MAX(a, b)   (a>b?a:b)
 static char historyCmd[MAX_LENGTH_COMMAND]={0};
+static char workingDir[MAX_LENGTH_PATH]={0};
 static int num_backgr_process=0;
+
+//clear screen
 void clearScreen();
+
+//change the name of the terminal
 void changeTerminalName(const char*name);
+
+//print new prompt
 void newPrompt();
-void getInputString(char* const inputString);//__attribute__((nonnull(1)));
+
+//stay until read a legal input from user (simple error-filter)
+//inputString:
+//  in: not null
+//  out: non empty
+void getInputString(char* const inputString);
+
+//if it exists history caller (!!), add history to every position caller appears
+//return: 1: if exists caller (!!) and history is not empty
+//        0: if not exists caller
+//        -1: if exists caller but history is empty
+int addHistoryToInputString(char* const inputString);
+
+//insert src string to dst string at position
 void insert(char* dst, char*src, int position);
-int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
+
+//split input string into two list of tokens/arguments
 //return:
-//0: normal command
-//1: Output redirect
-//2: Input redirect
-//3: Command next to command
+//0: normal command, tokens1: list arguments for command, tokens2: empty
+//1: Output redirect, tokens1: command, tokens2: file output
+//2: Input redirect, tokens1: command, tokens2: file input
+//3: Command next to command, tokens1: list for command1, tokens2: list for command2
+//4: cd command, like normal command but return different
+int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
+
+//get list of arguments/tokens from a single argument string (input of user)
+//input of command <= input of user (error-filtered)
 void getArgList(char** const argList, const char* const argString);
-//get list of argument/tokens from a single argument string
+
+//process command with input redirection
+//return -1 if error
+//end entire this child process
 int processRedirectInputCmd(char** const cmdtokens, char*filename);
+
+//process command with output redirection
+//return -1 if error
+//end entire this child process
 int processRedirectOutputCmd(char** const cmdtokens, char*filename);
+
+//Process two command separate by a |
+//return -1 if error
+//if success, end entire this child process
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
+
+//Every command will be put in here
+//with a specific command, call suitable process function depend on it case
+//return -1 if error
+//if success, end entire this child process
 int processCmd(int type, char**argumentscmd1, char**argumentscmd2);
+
+//create an two dimensional char array-argument list
+//return char**
 char** newArgumentList();
-char** freeArgumentList(char** argList);
+
+//free an two dimensional char array-argument list
 //return NULL
+char** freeArgumentList(char** argList);
+
+//detect command not found
+//no such file or directory
+//or is a directory
+void printWhenExecFailed(char* args0);
+
 
 int main()
 {
     //change the name of terminal window to SimpleShell
     changeTerminalName("SimpleShell");
-
+    getcwd(workingDir, MAX_LENGTH_PATH);
     clearScreen();
     
     int is_parentwait = 0;
@@ -49,19 +101,26 @@ int main()
     char** arg1List = newArgumentList();
     char** arg2List = newArgumentList();
     int mainpf[2];
-    if (pipe(mainpf) < 0) {
-            perror("pipe setup failed");
-            return 0; 
-        }
+    if (pipe(mainpf) < 0)
+    {
+        perror("pipe setup failed");
+        return 0; 
+    }
     int child_pid;
     while (1)
     {                                        
         getInputString(inputString);
-        if (strcmp(inputString, "exit") == 0) {
+        if (strcmp(inputString, "exit") == 0)
+        {
             break;
         }
         
         int type = splitTokens(inputString, arg1List, arg2List, &is_parentwait);
+        if(type==4) //change direction
+        {
+            changeDir(arg1List[1]);
+            continue;
+        }
 
         child_pid = fork();                             //split into parent and child
         if (child_pid == -1) {
@@ -108,8 +167,19 @@ void changeTerminalName(const char* name) {
     printf("\033]0;%s\007", name);
 }
 
-void newPrompt() {
-    printf("ssh>");
+void newPrompt()
+{
+    printf("ssh: %s>", workingDir);
+}
+
+void changeDir(char* dir)
+{
+    if(dir!=NULL && chdir(dir)==-1)
+    {
+        perror(NULL);
+    }
+    getcwd(workingDir, MAX_LENGTH_PATH);
+    newPrompt();
 }
 
 //get input string from stdin
@@ -118,54 +188,70 @@ void getInputString(char* const inputString)
     do {
         size_t lenInputStr = 0;
         char * inpStrTmp;
-        getline(&inpStrTmp, &lenInputStr, stdin);
+        //must read to another buffer because the getline may change the address of buffer
+        getline(&inpStrTmp, &lenInputStr, stdin); 
         memmove(inputString, inpStrTmp, strlen(inpStrTmp));
         inputString[strlen(inpStrTmp)-1] = 0;
         free(inpStrTmp);
+
         //delete last space
         int idLenInpStr = strlen(inputString)-1;
-        while (inputString[idLenInpStr] == ' ') {
+        while (idLenInpStr>=0 && inputString[idLenInpStr] == ' ') {
             inputString[idLenInpStr--] = 0;
         }
-        //check if !! is entered
-        int statusHistoryCall = -1;      //not call
-        int i = 0;
-        while (i < strlen(inputString)) {
-            if (inputString[i] == '!' && inputString[i+1] == '!') {
-                statusHistoryCall = 1;    //caller exists
-                if (historyCmd[0] == 0) {
-                    statusHistoryCall = 0;//false, history is not exist
-                    break;
-                }
-                int lenmove = strlen(inputString)-i-1;
-                if (strlen(inputString) == MAX_LENGTH_COMMAND) {
-                    lenmove -= 1;
-                }
-                memmove(inputString+i, inputString+i+2, strlen(inputString)-i-1);
-                insert(inputString, historyCmd, i);
-            }
-            i++;
-        }
-
-        //show to screen
-        if (statusHistoryCall == 0) {//fail
-            printf("No commands in history\n");
-            newPrompt();
-            continue;
-        } else {
-            if (statusHistoryCall == 1) {
-                printf("%s\n", inputString);
-            }
-
-            //save to history
-            if (inputString[0] != ' ') {
-                memmove(historyCmd, inputString, strlen(inputString)+1);
-            }
-            return;
+        if(idLenInpStr<0){ continue; }//if empty string
+        switch(addHistoryToInputString(inputString))
+        {
+            case 1: case 0: return;
+            case -1: continue;
         }
 
     } while (1);
 }
+
+//if it exists history caller (!!), add history to every position caller appears
+//return: 1: if exists caller (!!) and history is not empty
+//        0: if not exists caller
+//        -1: if exists caller but history is empty
+int addHistoryToInputString(char* const inputString)
+{
+    //check if !! is entered
+    int statusHistoryCall = 0;      //not call
+    int i = 0;
+    while (i < strlen(inputString)) {
+        if (inputString[i] == '!' && inputString[i+1] == '!') {
+            statusHistoryCall = 1;    //caller exists
+            if (historyCmd[0] == 0) {
+                statusHistoryCall = -1;//false, history is not exist
+                break;
+            }
+            int lenmove = strlen(inputString)-i-1;
+            if (strlen(inputString) == MAX_LENGTH_COMMAND) {
+                lenmove -= 1;
+            }
+            memmove(inputString+i, inputString+i+2, strlen(inputString)-i-1);
+            insert(inputString, historyCmd, i);
+        }
+        i++;
+    }
+
+    //show to screen
+    if (statusHistoryCall == -1) {//fail
+        printf("No commands in history\n");
+        newPrompt();
+    } else {
+        if (statusHistoryCall == 1) {
+            printf("%s\n", inputString);
+        }
+
+        //save to history
+        if (inputString[0] != ' ') {
+            memmove(historyCmd, inputString, strlen(inputString)+1);
+        }
+    }
+    return statusHistoryCall;
+}
+
 
 //insert src string to dst string at position
 void insert(char* dst, char*src, int position)
@@ -188,6 +274,7 @@ void insert(char* dst, char*src, int position)
 //1: Output redirect
 //2: Input redirect
 //3: Command next to command
+//4: cd command
 int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait)
 {
     int res = 0;
@@ -204,12 +291,13 @@ int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait)
         inpStr[idlen] = 0;
     }
     
-    //split first command and the rest: (tokens2 in simple case)
+    //split first command and the rest: (tokens2)
     int i = 0;
-    while (i < strlen(inpStr) && !strchr("|<>", inpStr[i])) {
+    while (i < strlen(inpStr) && !strchr("|<>", inpStr[i]))
+    {
         i+=1;   //look for special position or end
-    } 
-    if (i < strlen(inpStr)) {
+    }
+    if (i < strlen(inpStr)) { //separate character is in ["|<>"]
         if (inpStr[i] == '>') {
             res = 1;       
         } else if(inpStr[i] == '<') {
@@ -221,6 +309,11 @@ int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait)
         getArgList(tokens2, inpStr+i+1);
     }
     getArgList(tokens1, inpStr);
+    
+    if(strcmp(tokens1[0], "cd")==0) //cd command: type4
+    {
+        res=4;
+    }
 
     return res;
 }
@@ -303,7 +396,7 @@ int processRedirectInputCmd(char** const cmdtokens, char*filename)
     dup2(fd, STDIN_FILENO);
     close(fd);
     int et = execvp(cmdtokens[0], cmdtokens);
-    perror("exevcp failed");
+    printWhenExecFailed(cmdtokens[0]);
     return et;
 }
 //return error (<0) or not (>=0)
@@ -319,7 +412,7 @@ int processRedirectOutputCmd(char** const cmdtokens, char*filename)
     close(fd);
 
     int et = execvp(cmdtokens[0], cmdtokens);
-    perror("exevcp failed");
+    printWhenExecFailed(cmdtokens[0]);
     return et;
 }
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
@@ -328,7 +421,7 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
     if (pipe(pfsub) < 0)
     {
         perror("pipe setup failed"); 
-        return 0;   //return inside child=>end child, don't worry
+        return 0;
     }
 
     int ftsub = fork();                   //child split into this child and grandchild
@@ -341,7 +434,7 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
         close(pfsub[0]);
         close(pfsub[1]);
         execvp(argumentscmd1[0], argumentscmd1);//success or not, end grandchild, back to child
-        perror("exevcp failed");
+        printWhenExecFailed(argumentscmd1[0]);
         return 0;
     } else {                              //back to child
         waitpid(ftsub, NULL, 0);
@@ -349,7 +442,7 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
         close(pfsub[0]);
         close(pfsub[1]);
         execvp(argumentscmd2[0], argumentscmd2);
-        perror("exevcp failed");
+        printWhenExecFailed(argumentscmd2[0]);
         return 0;
     }
 }
@@ -361,9 +454,9 @@ int processCmd(int type, char**argumentscmd1, char**argumentscmd2)
         processRedirectInputCmd(argumentscmd1, argumentscmd2[0]);
     } else if(type == 3) {                      //cmd next to cmd
         processCmdNextToCmd(argumentscmd1, argumentscmd2);
-    } else {
+    } else {    //type==0, normal case
         execvp(argumentscmd1[0], argumentscmd1);//make sure in case exec* error, it still return 
-        perror("exevcp failed");
+        printWhenExecFailed(argumentscmd1[0]);
     }
 
     return 0;
@@ -386,4 +479,27 @@ char** freeArgumentList(char** argList)
     free(argList);
 
     return NULL;
+}
+
+//detect command not found
+//no such file or directory
+//or is a directory
+void printWhenExecFailed(char* args0)
+{
+    if(!strchr("~./", args0[0]))
+    {
+        printf("%s: command not found\n", args0);
+        return;
+    }
+
+    struct stat statbuf;
+    if(stat(args0, &statbuf)==-1)
+    {
+        printf("bash: %s: No such file or directory\n", args0);
+    }else if((statbuf.st_mode & S_IFMT) == S_IFDIR)
+    {
+        printf("bash: %s: Is a directory\n", args0);
+    }
+
+    return;
 }
