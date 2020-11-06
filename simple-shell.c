@@ -2,15 +2,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <memory.h>
+//#include <memory.h>
 #include <fcntl.h>
 #include <sys/wait.h>
-#include <sys/types.h>
-#include<sys/stat.h>
-#include <errno.h>
+//#include <sys/types.h>
+//#include <sys/stat.h>
+//#include <errno.h>
 
 #define MAX_LENGTH_COMMAND  256
-#define MAX_PIPE_INPUT_SIZE 512
 #define NUM_ARGUMENT        100
 #define ARGUMENT_SIZE       50
 #define MIN(a, b)   (a<b?a:b)
@@ -35,9 +34,9 @@ int processRedirectInputCmd(char** const cmdtokens, char*filename);
 int processRedirectOutputCmd(char** const cmdtokens, char*filename);
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
 int processCmd(int type, char**argumentscmd1, char**argumentscmd2);
-int** newArgumentList();
+char** newArgumentList();
 //return NULL
-int** freeArgumentList(char** argList);
+char** freeArgumentList(char** argList);
 int main()
 {
     //change the name of terminal window to SimpleShell
@@ -282,7 +281,7 @@ void getArgList(char** const argList, const char* const argString)
 int processRedirectInputCmd(char** const cmdtokens, char*filename){
     int fd=open(filename, O_RDONLY);
     if(fd<0){
-        printf("bash: %s: No such file or directory", filename);
+        printf("bash: %s: No such file or directory\n", filename);
         return -1;
     }
     dup2(fd, STDIN_FILENO);
@@ -340,7 +339,7 @@ int processCmd(int type, char**argumentscmd1, char**argumentscmd2){
 
     return 0;
 }
-int** newArgumentList()
+char** newArgumentList()
 {
     char** newList=malloc(NUM_ARGUMENT*sizeof(char*));
     for(int i=0; i<NUM_ARGUMENT; i++){
@@ -348,7 +347,7 @@ int** newArgumentList()
     }
     return newList;
 }
-int** freeArgumentList(char** argList){
+char** freeArgumentList(char** argList){
     for(int i=0; i<NUM_ARGUMENT; i++)
     {
         free(argList[i]);
