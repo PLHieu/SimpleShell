@@ -21,15 +21,14 @@ void changeTerminalName(const char*name);
 void newPrompt();
 void getInputString(char* const inputString);//__attribute__((nonnull(1)));
 void insert(char* dst, char*src, int position);
+int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
 //return:
 //0: normal command
 //1: Output redirect
 //2: Input redirect
 //3: Command next to command
-int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
-
-//get list of argument/tokens from a single argument string
 void getArgList(char** const argList, const char* const argString);
+//get list of argument/tokens from a single argument string
 int processRedirectInputCmd(char** const cmdtokens, char*filename);
 int processRedirectOutputCmd(char** const cmdtokens, char*filename);
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
@@ -37,140 +36,148 @@ int processCmd(int type, char**argumentscmd1, char**argumentscmd2);
 char** newArgumentList();
 //return NULL
 char** freeArgumentList(char** argList);
+
 int main()
 {
     //change the name of terminal window to SimpleShell
     changeTerminalName("SimpleShell");
-    //clear screen
+
     clearScreen();
     
-    int is_parentwait=0;
-    char *inputString=malloc(MAX_LENGTH_COMMAND);
-    char** arg1List=newArgumentList();
-    char** arg2List=newArgumentList();
+    int is_parentwait = 0;
+    char *inputString = malloc(MAX_LENGTH_COMMAND);
+    char** arg1List = newArgumentList();
+    char** arg2List = newArgumentList();
     int mainpf[2];
-    if(pipe(mainpf)<0){ perror("pipe setup failed"); return 0; }
+    if (pipe(mainpf) < 0) {
+            perror("pipe setup failed"); return 0; 
+        }
     int child_pid;
-    while(1){                                       //do while not input "exit"       
+    while (1)
+    {                                        
         getInputString(inputString);
-        if(strcmp(inputString, "exit")==0){break;}  //if wanna exit then exit
+        if (strcmp(inputString, "exit") == 0) {
+            break;
+        }
         
         int type = splitTokens(inputString, arg1List, arg2List, &is_parentwait);
 
-        child_pid=fork();                             //split into parent and child
+        child_pid = fork();                             //split into parent and child
         if (child_pid == -1) {
             perror("fork failed");
         } else if (child_pid == 0) {                      //child
             free(inputString);
             return processCmd(type, arg1List, arg2List);
-        }else//parent
+        } else //parent
         {
-            if(is_parentwait){
+            if (is_parentwait) {
                 waitpid(child_pid, NULL, 0);
                 newPrompt();
-            }else{//parent does not wait, so create new process to wait for the child done to print out newPrompt()
-                num_backgr_process+=1;
+            } else {//parent does not wait, so create new process to wait for the child done to print out newPrompt()
+                num_backgr_process += 1;
                 //new process run along with the parent to check if child has end.
                 //if child still run then it don't print out newPrompt();
-                int c2_pid=fork();
-                if(c2_pid<0){ //fork failed
+                int c2_pid = fork();
+                if (c2_pid < 0) { //fork failed
                     newPrompt();
                 }
-                else if(c2_pid==0){//continue reading new input, and processing, while parent wait for child_run
+                else if (c2_pid == 0) {//continue reading new input, and processing, while parent wait for child_run
                     //run while loop 
-                }else{//pid>0, parent process 
-                    int wret=waitpid(c2_pid, NULL, 0);//wait for child_run
+                } else {//pid>0, parent process 
+                    int wret = waitpid(c2_pid, NULL, 0);//wait for child_run
                     newPrompt();
                     return 0;               //end parent, so the above child_2 will become parent
                     }
-                is_parentwait=0;
+                is_parentwait = 0;
             }
         }
     };
 
     free(inputString);
-    arg1List=freeArgumentList(arg1List);
-    arg2List=freeArgumentList(arg2List);
+    arg1List = freeArgumentList(arg1List);
+    arg2List = freeArgumentList(arg2List);
     return 0;
 }
 
-void clearScreen(){
+void clearScreen() {
     fflush(stdout);
     system("clear");
     newPrompt();
 }
-void changeTerminalName(const char* name){
+void changeTerminalName(const char* name) {
     printf("\033]0;%s\007", name);
 }
-//new prompt line
-void newPrompt(){
+
+void newPrompt() {
     printf("ssh>");
 }
 
 //get input string from stdin
-void getInputString(char* const inputString){
-
-    do{
-        size_t lenInputStr=0;
+void getInputString(char* const inputString)
+{
+    do {
+        size_t lenInputStr = 0;
         char * inpStrTmp;
         getline(&inpStrTmp, &lenInputStr, stdin);
         memmove(inputString, inpStrTmp, strlen(inpStrTmp));
-        inputString[strlen(inpStrTmp)-1]=0;
+        inputString[strlen(inpStrTmp)-1] = 0;
         free(inpStrTmp);
         //delete last space
-        int idLenInpStr=strlen(inputString)-1;
-        while(inputString[idLenInpStr]==' '){
-            inputString[idLenInpStr--]=0;
+        int idLenInpStr = strlen(inputString)-1;
+        while (inputString[idLenInpStr] == ' ') {
+            inputString[idLenInpStr--] = 0;
         }
         //check if !! is entered
         int statusHistoryCall = -1;      //not call
-        int i=0;
-        while(i < strlen(inputString)){
-            if(inputString[i] == '!' && inputString[i+1] == '!'){
-                statusHistoryCall=1;    //caller exists
-                if(historyCmd[0]==0){
-                    statusHistoryCall=0;//false, history is not exist
+        int i = 0;
+        while (i < strlen(inputString)) {
+            if (inputString[i] == '!' && inputString[i+1] == '!') {
+                statusHistoryCall = 1;    //caller exists
+                if (historyCmd[0] == 0) {
+                    statusHistoryCall = 0;//false, history is not exist
                     break;
                 }
-                int lenmove=strlen(inputString)-i-1;
-                if(strlen(inputString)==MAX_LENGTH_COMMAND){lenmove-=1;}
+                int lenmove = strlen(inputString)-i-1;
+                if (strlen(inputString) == MAX_LENGTH_COMMAND) {
+                    lenmove -= 1;
+                }
                 memmove(inputString+i, inputString+i+2, strlen(inputString)-i-1);
                 insert(inputString, historyCmd, i);
             }
             i++;
         }
 
-
         //show to screen
-        if(statusHistoryCall==0){//fail
+        if (statusHistoryCall == 0) {//fail
             printf("No commands in history\n");
             newPrompt();
             continue;
-        }else{
-            if(statusHistoryCall==1){
+        } else {
+            if (statusHistoryCall == 1) {
                 printf("%s\n", inputString);
             }
 
             //save to history
-            if(inputString[0]!=' '){
+            if (inputString[0] != ' ') {
                 memmove(historyCmd, inputString, strlen(inputString)+1);
             }
             return;
         }
 
-    }while(1);
+    } while (1);
 }
 
 //insert src string to dst string at position
-void insert(char* dst, char*src, int position){
-    int lendst=strlen(dst);
-    int lensrc=strlen(src);
-    if(position>=MAX_LENGTH_COMMAND){
+void insert(char* dst, char*src, int position)
+{
+    int lendst = strlen(dst);
+    int lensrc = strlen(src);
+    if (position >= MAX_LENGTH_COMMAND) {
         return;
     }
-    int maxlen=MIN(MAX_LENGTH_COMMAND, lendst+lensrc);
-    int lenMoveAfter=MAX(0, maxlen-(position+lensrc));
-    int lenMove=MIN(lensrc, MAX_LENGTH_COMMAND);
+    int maxlen = MIN(MAX_LENGTH_COMMAND, lendst+lensrc);
+    int lenMoveAfter = MAX(0, maxlen-(position+lensrc));
+    int lenMove = MIN(lensrc, MAX_LENGTH_COMMAND);
 
     memmove(dst+position+lensrc, dst+position, lenMoveAfter);
     memmove(dst+position, src, lenMove);
@@ -183,25 +190,32 @@ void insert(char* dst, char*src, int position){
 //3: Command next to command
 int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait)
 {
-    int res=0;
+    int res = 0;
     *is_parentwait = 1;
     //delete last space in inpStr
-    int idlen=strlen(inpStr)-1;
-    while(idlen>=0 && inpStr[idlen]==' '){ inpStr[idlen--] = 0;}
+    int idlen = strlen(inpStr)-1;
+    while (idlen >= 0 && inpStr[idlen] == ' ') { 
+        inpStr[idlen--] = 0;
+    }
 
     //check if the last char is & then is_parentwait=true
     if (idlen >= 0 && inpStr[idlen] == '&') {
         *is_parentwait = 0;
-        inpStr[idlen]=0;
+        inpStr[idlen] = 0;
     }
     
     //split first command and the rest: (tokens2 in simple case)
-    int i=0;
-    while(i<strlen(inpStr) && !strchr("|<>", inpStr[i])){i+=1;} //look for special position or end
-    if(i<strlen(inpStr)){
-        if (inpStr[i]=='>'){res=1;}         //'>'  
-        else if(inpStr[i]=='<'){res=2;}     //'<'
-        else res=3;                         //'|'
+    int i = 0;
+    while (i < strlen(inpStr) && !strchr("|<>", inpStr[i])) {
+        i+=1;   //look for special position or end
+    } 
+    if (i < strlen(inpStr)) {
+        if (inpStr[i] == '>') {
+            res = 1;       
+        } else if(inpStr[i] == '<') {
+            res = 2;      
+        } else                 // '|'
+            res=3;          
 
         inpStr[i]=0;
         getArgList(tokens2, inpStr+i+1);
@@ -278,45 +292,55 @@ void getArgList(char** const argList, const char* const argString)
 }
 
 //return error (<0) or not (>=0)
-int processRedirectInputCmd(char** const cmdtokens, char*filename){
-    int fd=open(filename, O_RDONLY);
-    if(fd<0){
+int processRedirectInputCmd(char** const cmdtokens, char*filename)
+{
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0)
+    {
         printf("bash: %s: No such file or directory\n", filename);
         return -1;
     }
     dup2(fd, STDIN_FILENO);
     close(fd);
-    int et=execvp(cmdtokens[0], cmdtokens);
+    int et = execvp(cmdtokens[0], cmdtokens);
     return et;
 }
 //return error (<0) or not (>=0)
-int processRedirectOutputCmd(char** const cmdtokens, char*filename){
-    int fd=open(filename, O_WRONLY | O_TRUNC | O_CREAT);
-    if(fd<0){
+int processRedirectOutputCmd(char** const cmdtokens, char*filename)
+{
+    int fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT);
+    if (fd < 0)
+    {
         printf("bash: %s: No such file or directory\n", filename);
         return -1;
     }
     dup2(fd, STDOUT_FILENO);
     close(fd);
 
-    int et=execvp(cmdtokens[0], cmdtokens);
+    int et = execvp(cmdtokens[0], cmdtokens);
     return et;
 }
-int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2){
+int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
+{
     int pfsub[2];
-    if(pipe(pfsub) < 0){ perror("pipe setup failed"); return 0; }//return inside child=>end child, don't worry
+    if (pipe(pfsub) < 0)
+    {
+        perror("pipe setup failed"); 
+        return 0;   //return inside child=>end child, don't worry
+    }
 
-    int ftsub=fork();                   //child split into this child and grandchild
-    if(ftsub<0){
+    int ftsub = fork();                   //child split into this child and grandchild
+    if (ftsub < 0)
+    {
         perror("fork failed");
         return 0;
-    }else if(ftsub==0){                 //grandchild
+    } else if (ftsub == 0) {                 //grandchild
         dup2(pfsub[1], STDOUT_FILENO);
         close(pfsub[0]);
         close(pfsub[1]);
         execvp(argumentscmd1[0], argumentscmd1);//success or not, end grandchild, back to child
         return 0;
-    }else{                              //back to child
+    } else {                              //back to child
         waitpid(ftsub, NULL, 0);
         dup2(pfsub[0], STDIN_FILENO);
         close(pfsub[0]);
@@ -325,15 +349,15 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2){
         return 0;
     }
 }
-int processCmd(int type, char**argumentscmd1, char**argumentscmd2){
-    
-    if(type==1){
+int processCmd(int type, char**argumentscmd1, char**argumentscmd2)
+{    
+    if (type == 1) {
         processRedirectOutputCmd(argumentscmd1, argumentscmd2[0]);
-    }else if(type==2){
+    } else if(type == 2) {
         processRedirectInputCmd(argumentscmd1, argumentscmd2[0]);
-    }else if(type==3){                      //cmd next to cmd
+    } else if(type == 3) {                      //cmd next to cmd
         processCmdNextToCmd(argumentscmd1, argumentscmd2);
-    }else{
+    } else {
         execvp(argumentscmd1[0], argumentscmd1);//make sure in case exec* error, it still return 
     }
 
@@ -341,14 +365,16 @@ int processCmd(int type, char**argumentscmd1, char**argumentscmd2){
 }
 char** newArgumentList()
 {
-    char** newList=malloc(NUM_ARGUMENT*sizeof(char*));
-    for(int i=0; i<NUM_ARGUMENT; i++){
-        newList[i]=malloc(ARGUMENT_SIZE);
+    char** newList = malloc(NUM_ARGUMENT*sizeof(char*));
+    for (int i = 0; i < NUM_ARGUMENT; i++)
+    {
+        newList[i] = malloc(ARGUMENT_SIZE);
     }
     return newList;
 }
-char** freeArgumentList(char** argList){
-    for(int i=0; i<NUM_ARGUMENT; i++)
+char** freeArgumentList(char** argList)
+{
+    for(int i = 0; i < NUM_ARGUMENT; i++)
     {
         free(argList[i]);
     }
@@ -356,5 +382,3 @@ char** freeArgumentList(char** argList){
 
     return NULL;
 }
-
-
