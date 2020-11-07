@@ -26,6 +26,10 @@ void changeTerminalName(const char*name);
 //print new prompt
 void newPrompt();
 
+//change working directory
+//list of argument put into cd command ["cd", "./.../folder", ...]
+void changeDir(char** dirList);
+
 //stay until read a legal input from user (simple error-filter)
 //inputString:
 //  in: not null
@@ -118,7 +122,7 @@ int main()
         int type = splitTokens(inputString, arg1List, arg2List, &is_parentwait);
         if(type==4) //change direction
         {
-            changeDir(arg1List[1]);
+            changeDir(arg1List);
             continue;
         }
 
@@ -172,9 +176,14 @@ void newPrompt()
     printf("ssh: %s>", workingDir);
 }
 
-void changeDir(char* dir)
+//list of argument put into cd command ["cd", "./.../folder", ...]
+void changeDir(char** dirList)
 {
-    if(dir!=NULL && chdir(dir)==-1)
+    if(dirList[2]!=NULL)
+    {
+        printf("bash: cd: too many arguments\n");
+    }
+    else if(dirList[1]!=NULL && chdir(dirList[1])==-1)
     {
         perror(NULL);
     }
@@ -258,7 +267,8 @@ void insert(char* dst, char*src, int position)
 {
     int lendst = strlen(dst);
     int lensrc = strlen(src);
-    if (position >= MAX_LENGTH_COMMAND) {
+    if (position >= MAX_LENGTH_COMMAND) 
+    {
         return;
     }
     int maxlen = MIN(MAX_LENGTH_COMMAND, lendst+lensrc);
@@ -379,8 +389,12 @@ void getArgList(char** const argList, const char* const argString)
         id++;
     }
 
-    free(argList[id]);
-    argList[id] = NULL;
+    for(int i=id; i<NUM_ARGUMENT; i++)
+    {
+        free(argList[i]);
+        argList[i]=NULL;
+    }
+
     free(token);
 }
 
