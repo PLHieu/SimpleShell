@@ -196,7 +196,7 @@ void changeDir(char** dirList)
     }
     else if(dirList[1]!=NULL && chdir(dirList[1])==-1)
     {
-        perror(NULL);
+        perror(dirList[1]);
     }
     getcwd(workingDir, MAX_LENGTH_PATH);
     newPrompt();
