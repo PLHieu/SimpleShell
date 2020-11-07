@@ -148,7 +148,16 @@ int main()
                     //run while loop 
                 } else {//pid > 0, parent process 
                     int wret = waitpid(c2_pid, NULL, 0);//wait for child_run
+                    free(inputString);
+                    arg1List = freeArgumentList(arg1List);
+                    arg2List = freeArgumentList(arg2List);
                     newPrompt();
+                    fflush(stdout);
+                    
+                    //wait for mainflow, this is ashame 'cause parent thread still run.
+                    //But it's neccessary to hold the terminal window for the child
+                    //otherwise the terminal will end though the child is running or not
+                    waitpid(c2_pid, NULL, 0);
                     return 0;               //end parent, so the above child_2 will become parent
                     }
                 is_parentwait = 0;
