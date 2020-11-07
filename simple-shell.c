@@ -140,14 +140,17 @@ int main()
             } else {
                 num_backgr_process += 1;
                 printf("[%d] %d\n", num_backgr_process, child_pid);
+
                 int c2_pid = fork();
                 if (c2_pid < 0) { //fork failed
                     newPrompt();
                 }
                 else if (c2_pid == 0) {//continue reading new input, and processing, while parent wait for child_run
                     //run while loop 
-                } else {//pid > 0, parent process 
-                    int wret = waitpid(c2_pid, NULL, 0);//wait for child_run
+                }
+                else
+                {//pid > 0, parent process 
+                    int wret = waitpid(child_pid, NULL, 0);//wait for child_run
                     free(inputString);
                     arg1List = freeArgumentList(arg1List);
                     arg2List = freeArgumentList(arg2List);
@@ -159,8 +162,7 @@ int main()
                     //otherwise the terminal will end though the child is running or not
                     waitpid(c2_pid, NULL, 0);
                     return 0;               //end parent, so the above child_2 will become parent
-                    }
-                is_parentwait = 0;
+                }
             }
         }
     };
@@ -484,6 +486,7 @@ int processCmd(int type, char**argumentscmd1, char**argumentscmd2)
 
     return 0;
 }
+
 char** newArgumentList()
 {
     char** newList = malloc(NUM_ARGUMENT*sizeof(char*));
