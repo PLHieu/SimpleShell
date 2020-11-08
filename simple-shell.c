@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#include <errno.h>
 
 #define MAX_LENGTH_COMMAND  256
 #define MAX_LENGTH_PATH     256
@@ -13,15 +12,15 @@
 #define ARGUMENT_SIZE       200
 #define MIN(a, b)   (a<b?a:b)
 #define MAX(a, b)   (a>b?a:b)
-static char historyCmd[MAX_LENGTH_COMMAND]={0};
-static char workingDir[MAX_LENGTH_PATH]={0};
-static int num_backgr_process=0;
+static char historyCmd[MAX_LENGTH_COMMAND] = "\0";
+static char workingDir[MAX_LENGTH_PATH] = "\0";
+static int num_backgr_process = 0;
 
 //clear screen
 void clearScreen();
 
 //change the name of the terminal
-void changeTerminalName(const char*name);
+void changeTerminalName(const char* name);
 
 //print new prompt
 void newPrompt();
@@ -43,7 +42,7 @@ void getInputString(char* const inputString);
 int addHistoryToInputString(char* const inputString);
 
 //insert src string to dst string at position
-void insert(char* dst, char*src, int position);
+void insert(char* dst, char* src, int position);
 
 //split input string into two list of tokens/arguments
 //return:
@@ -52,7 +51,7 @@ void insert(char* dst, char*src, int position);
 //2: Input redirect, tokens1: command, tokens2: file input
 //3: Command next to command, tokens1: list for command1, tokens2: list for command2
 //4: cd command, like normal command but return different
-int splitTokens(char*inpStr, char**tokens1, char**tokens2, int* is_parentwait);
+int splitTokens(char*inpStr, char** tokens1, char** tokens2, int* is_parentwait);
 
 //get list of arguments/tokens from a single argument string (input of user)
 //input of command <= input of user (error-filtered)
@@ -61,23 +60,23 @@ void getArgList(char** const argList, const char* const argString);
 //process command with input redirection
 //return -1 if error
 //end entire this child process
-int processRedirectInputCmd(char** const cmdtokens, char*filename);
+int processRedirectInputCmd(char** const cmdtokens, char* filename);
 
 //process command with output redirection
 //return -1 if error
 //end entire this child process
-int processRedirectOutputCmd(char** const cmdtokens, char*filename);
+int processRedirectOutputCmd(char** const cmdtokens, char* filename);
 
 //Process two command separate by a |
 //return -1 if error
 //if success, end entire this child process
-int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2);
+int processCmdNextToCmd(char** argumentscmd1, char** argumentscmd2);
 
 //Every command will be put in here
 //with a specific command, call suitable process function depend on it case
 //return -1 if error
 //if success, end entire this child process
-int processCmd(int type, char**argumentscmd1, char**argumentscmd2);
+int processCmd(int type, char** argumentscmd1, char** argumentscmd2);
 
 //create an two dimensional char array-argument list
 //return char**
@@ -104,12 +103,6 @@ int main()
     char *inputString = malloc(MAX_LENGTH_COMMAND);
     char** arg1List = newArgumentList();
     char** arg2List = newArgumentList();
-    int mainpf[2];
-    if (pipe(mainpf) < 0)
-    {
-        perror("pipe setup failed");
-        return 0; 
-    }
     int child_pid;
     while (1)
     {                                        
@@ -120,7 +113,7 @@ int main()
         }
         
         int type = splitTokens(inputString, arg1List, arg2List, &is_parentwait);
-        if(type==4) //change direction
+        if (type == 4) //change direction
         {
             changeDir(arg1List);
             continue;
@@ -178,6 +171,7 @@ void clearScreen() {
     system("clear");
     newPrompt();
 }
+
 void changeTerminalName(const char* name) {
     printf("\033]0;%s\007", name);
 }
@@ -424,6 +418,7 @@ int processRedirectInputCmd(char** const cmdtokens, char*filename)
     printWhenExecFailed(cmdtokens[0]);
     return et;
 }
+
 //return error (<0) or not (>=0)
 int processRedirectOutputCmd(char** const cmdtokens, char*filename)
 {
@@ -440,6 +435,7 @@ int processRedirectOutputCmd(char** const cmdtokens, char*filename)
     printWhenExecFailed(cmdtokens[0]);
     return et;
 }
+
 int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
 {
     int pfsub[2];
@@ -471,6 +467,7 @@ int processCmdNextToCmd(char**argumentscmd1, char**argumentscmd2)
         return 0;
     }
 }
+
 int processCmd(int type, char**argumentscmd1, char**argumentscmd2)
 {    
     if (type == 1) {
@@ -496,6 +493,7 @@ char** newArgumentList()
     }
     return newList;
 }
+
 char** freeArgumentList(char** argList)
 {
     for(int i = 0; i < NUM_ARGUMENT; i++)
