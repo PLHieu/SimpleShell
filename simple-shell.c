@@ -344,13 +344,13 @@ void getArgList(char** const argList, const char* const argString)
 {
     char* token = (char*)malloc(50);
     int i = 0, ti = 0, id = 0;  
-    int dacodaunhay = 0;
+    int havingquote = 0;
 
     while (i < strlen(argString))
     {
         token[ti] = argString[i];
-        if (token[ti] == ' ' && dacodaunhay == 0) {
-            if (ti == 0 || token[ti - 1] != '\\') { // neu nhu no thuoc dang \[ ] thi khong parse
+        if (token[ti] == ' ' && havingquote == 0) {
+            if (ti == 0 || token[ti - 1] != '\\') { // if belong to  \[ ] -> no parse
                 token[ti] = 0;//end token
                 if (token[0] != 0) {//not null token
                     if (argList[id] == NULL) {
@@ -369,12 +369,12 @@ void getArgList(char** const argList, const char* const argString)
         }
         else if (token[ti] == '\"' || token[ti] == '\'') { 
 
-            if (!dacodaunhay) { // neu nhu khong co dau nhay -> tuc la dau " hoac 'dau tien
-                dacodaunhay = 1;
+            if (!havingquote) { 
+                havingquote = 1;
                 ti = -1;
             }
-            else { // neu nhu da co dau nhay, tuc day la dau nhay ket thuc
-                // neu token[0] la ", tuc la " luc nay la ket thuc -> parse
+            else { 
+                // if token[0] is ", ending -> parse
                 token[ti] = 0;//end token
                 if (token[0] != 0) {//not null token
                     if (argList[id] == NULL) {
@@ -385,7 +385,7 @@ void getArgList(char** const argList, const char* const argString)
                 }
 
                 ti = -1;//new token
-                dacodaunhay = 0;
+                havingquote = 0;
             }
         }
         i++;
